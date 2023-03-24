@@ -11,26 +11,26 @@ var refraction = Refractions.FromType<TestClass>();
 // 2nd: create mock interface
 public interface ITestClass
 {
-	void StaticWithReturnsVoid();
+  void StaticWithReturnsVoid();
 
-	string StaticWithReturnsString();
+  string StaticWithReturnsString();
 
-	string StaticWithArgsAndReturnsString(string msg);
+  string StaticWithArgsAndReturnsString(string msg);
 
-	void InstanceWithReturnsVoid();
+  void InstanceWithReturnsVoid();
 
-	string InstanceWithReturnsString();
+  string InstanceWithReturnsString();
 
-	string InstanceWithArgsAndReturnsString(string msg);
+  string InstanceWithArgsAndReturnsString(string msg);
 
   // return self instance
   ITestClass Test();
 
   // interface could not declare field, set FieldAttribute
-	[Field]
-	string field { get; set; }
+  [Field]
+  string field { get; set; }
 
-	string Property { get; set; }
+  string Property { get; set; }
 }
 
 // 3rd: create instance with target class
