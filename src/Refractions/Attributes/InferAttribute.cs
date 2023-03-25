@@ -3,17 +3,15 @@
 //  Licensed under the MIT License. See LICENSE in the project root for license information.
 // ------------------------------------------------------------------------------------------
 
-namespace Refractions.Extensions;
+namespace Refractions.Attributes;
 
-public static class ObjectExtensions
+[AttributeUsage(AttributeTargets.Parameter)]
+public class InferAttribute : Attribute
 {
-    public static RefractionResolver ToRefract(this object obj)
-    {
-        return RefractionResolver.FromType(obj.GetType());
-    }
+    public string Infer { get; }
 
-    public static Refraction<T> ToInstantiate<T>(this object obj, Refraction<T> refraction)
+    public InferAttribute(string infer)
     {
-        return refraction.Instance(obj);
+        Infer = infer;
     }
 }

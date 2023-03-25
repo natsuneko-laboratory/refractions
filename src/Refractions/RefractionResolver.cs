@@ -8,11 +8,12 @@ using System.Reflection;
 
 namespace Refractions;
 
-public class Refractions
+public class RefractionResolver
 {
     private readonly Assembly _assembly;
 
-    private Refractions(Assembly assembly)
+
+    private RefractionResolver(Assembly assembly)
     {
         _assembly = assembly;
     }
@@ -37,24 +38,24 @@ public class Refractions
 
     #region Instance Factories
 
-    public static Refractions FromAssembly(Assembly assembly)
+    public static RefractionResolver FromAssembly(Assembly assembly)
     {
-        return new Refractions(assembly);
+        return new RefractionResolver(assembly);
     }
 
-    public static Refractions FromType(Type t)
+    public static RefractionResolver FromType(Type t)
     {
-        return new Refractions(t.Assembly);
+        return new RefractionResolver(t.Assembly);
     }
 
-    public static Refractions FromType<T>() where T : class
+    public static RefractionResolver FromType<T>() where T : class
     {
         return FromType(typeof(T));
     }
 
     private static readonly ConcurrentDictionary<string, Assembly> NameToAssemblyDictionary = new();
 
-    public static Refractions FromTypeFullName(string fullname)
+    public static RefractionResolver FromTypeFullName(string fullname)
     {
         if (NameToAssemblyDictionary.TryGetValue(fullname, out var o))
             return FromAssembly(o);
@@ -66,7 +67,7 @@ public class Refractions
         return FromAssembly(assembly);
     }
 
-    public static Refractions FromFullyQualifiedTypeName(string fullyQualifiedTypeName)
+    public static RefractionResolver FromFullyQualifiedTypeName(string fullyQualifiedTypeName)
     {
         if (NameToAssemblyDictionary.TryGetValue(fullyQualifiedTypeName, out var o))
             return FromAssembly(o);
@@ -78,7 +79,7 @@ public class Refractions
         return FromAssembly(assembly);
     }
 
-    public static Refractions FromFullyQualifiedAssemblyName(string fullyQualifiedAssemblyName)
+    public static RefractionResolver FromFullyQualifiedAssemblyName(string fullyQualifiedAssemblyName)
     {
         if (NameToAssemblyDictionary.TryGetValue(fullyQualifiedAssemblyName, out var o))
             return FromAssembly(o);

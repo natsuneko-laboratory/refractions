@@ -3,17 +3,14 @@
 //  Licensed under the MIT License. See LICENSE in the project root for license information.
 // ------------------------------------------------------------------------------------------
 
+using System.Reflection;
+
 namespace Refractions.Extensions;
 
-public static class ObjectExtensions
+internal static class MemberInfoExtensions
 {
-    public static RefractionResolver ToRefract(this object obj)
+    public static bool HasCustomAttribute<T>(this MemberInfo element) where T : Attribute
     {
-        return RefractionResolver.FromType(obj.GetType());
-    }
-
-    public static Refraction<T> ToInstantiate<T>(this object obj, Refraction<T> refraction)
-    {
-        return refraction.Instance(obj);
+        return element.GetCustomAttribute<T>() != null;
     }
 }
