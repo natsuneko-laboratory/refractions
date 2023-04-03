@@ -24,6 +24,33 @@ public class Refraction<TProxy>
         InnerInstance = instance;
     }
 
+    private static bool IsConstructor(MethodBase mi)
+    {
+        return mi.HasCustomAttribute<ConstructorAttribute>();
+    }
+
+    private static bool IsMethod(MethodBase mi)
+    {
+        return !IsConstructor(mi);
+    }
+
+    private ConstructorInfo FindConstructor(MethodBase mi)
+    {
+        var parameters = mi.GetParameters().Select(w => w.ParameterType).ToArray();
+        var flags = BindingFlags.Default;
+
+        if (mi.HasCustomAttribute<PublicAttribute>())
+            flags |= BindingFlags.Public;
+        if (mi.HasCustomAttribute<NonPublicAttribute>())
+            flags |= BindingFlags.NonPublic;
+        if (mi.HasCustomAttribute<InstanceAttribute>())
+            flags |= BindingFlags.Instance;
+        if (mi.HasCustomAttribute<StaticAttribute>())
+            flags |= BindingFlags.Static;
+
+        return _t.GetConstructor(flags, null, parameters, null) ?? throw new MissingMemberException(_t.Name, "ctor");
+    }
+
     private MethodInfo FindMethod(MethodBase mi)
     {
         var name = mi.Name;
@@ -69,9 +96,26 @@ public class Refraction<TProxy>
         return (property, true);
     }
 
-
-    private TAction BuildProxyLambda<TAction>(MethodCallExpression expr) where TAction : Delegate
+    private TAction BuildProxyLambdaConstructor<TAction>(MethodCallExpression expr) where TAction : Delegate
     {
+        if (!IsConstructor(expr.Method))
+            throw new InvalidOperationException();
+
+        // ProxyConstruct(i => i.Constructor(msg1, msg2)) --> (args) => new Constructor(args[0], args[1]);
+        var constructor = FindConstructor(expr.Method);
+        var parameters = Expression.Parameter(typeof(object[]), "parameters");
+        var arguments = expr.Arguments.Select((w, i) => Expression.Convert(Expression.ArrayAccess(parameters, Expression.Constant(i)), w.Type));
+        var construct = Expression.New(constructor, arguments);
+        var lambda = Expression.Lambda(construct, false, parameters);
+
+        return (TAction)lambda.Compile();
+    }
+
+    private TAction BuildProxyLambdaMethod<TAction>(MethodCallExpression expr) where TAction : Delegate
+    {
+        if (!IsMethod(expr.Method))
+            throw new InvalidOperationException();
+
         // ProxyInvoke(i => i.WriteLine(msg1, msg2)) --> (instance, args) => instance.WriteLine(args[0], args[1]);
         var method = FindMethod(expr.Method);
         var accessor = Expression.Parameter(typeof(object), nameof(InnerInstance));
@@ -108,6 +152,23 @@ public class Refraction<TProxy>
         };
     }
 
+    public Refraction<TProxy> ProxyConstruct(Expression<Action<TProxy>> obj)
+    {
+        var call = (MethodCallExpression)obj.Body;
+
+        if (ExpressionActionCaches<Func<object[], object>>.CachedActions.TryGetValue(call.Method, out var c))
+        {
+            var i = c(GetValueOfArguments(call.Arguments));
+            return new Refraction<TProxy>(_t, i);
+        }
+
+        var func = BuildProxyLambdaConstructor<Func<object[], object>>(call);
+        var instance = func(GetValueOfArguments(call.Arguments));
+
+        ExpressionActionCaches<Func<object[], object>>.CachedActions.TryAdd(call.Method, func);
+        return new Refraction<TProxy>(_t, instance);
+    }
+
     public void ProxyInvoke(Expression<Action<TProxy>> obj)
     {
         var call = (MethodCallExpression)obj.Body;
@@ -118,7 +179,7 @@ public class Refraction<TProxy>
             return;
         }
 
-        var func = BuildProxyLambda<Action<object?, object[]>>(call);
+        var func = BuildProxyLambdaMethod<Action<object?, object[]>>(call);
 
         ExpressionActionCaches<Action<object?, object[]>>.CachedActions.TryAdd(call.Method, func);
         func(InnerInstance, GetValueOfArguments(call.Arguments));
@@ -131,7 +192,7 @@ public class Refraction<TProxy>
         if (ExpressionActionCaches<Func<object?, object[], TReturn>>.CachedActions.TryGetValue(call.Method, out var c))
             return c(InnerInstance, GetValueOfArguments(call.Arguments));
 
-        var func = BuildProxyLambda<Func<object?, object[], TReturn>>(call);
+        var func = BuildProxyLambdaMethod<Func<object?, object[], TReturn>>(call);
 
         ExpressionActionCaches<Func<object?, object[], TReturn>>.CachedActions.TryAdd(call.Method, func);
         return func(InnerInstance, GetValueOfArguments(call.Arguments));
@@ -147,7 +208,7 @@ public class Refraction<TProxy>
             return new Refraction<TProxy>(_t, i);
         }
 
-        var func = BuildProxyLambda<Func<object?, object[], object>>(call);
+        var func = BuildProxyLambdaMethod<Func<object?, object[], object>>(call);
         var instance = func(InnerInstance, GetValueOfArguments(call.Arguments));
 
         ExpressionActionCaches<Func<object?, object[], object>>.CachedActions.TryAdd(call.Method, func);
