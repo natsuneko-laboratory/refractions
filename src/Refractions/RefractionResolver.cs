@@ -21,19 +21,19 @@ public class RefractionResolver
     public Refraction<T> Get<T>(string fullname) where T : class
     {
         var t = _assembly.GetType(fullname);
-        return new Refraction<T>(t);
+        return new Refraction<T>(_assembly, t);
     }
 
     public Refraction<T> GetLaxity<T>(string name) where T : class
     {
         var t = _assembly.GetTypes().First(w => w.Name == name);
-        return new Refraction<T>(t);
+        return new Refraction<T>(_assembly, t);
     }
 
     public Refraction<T> GetStrictly<T>(string fullyQualifiedTypeName) where T : class
     {
         var t = _assembly.GetTypes().First(w => w.AssemblyQualifiedName == fullyQualifiedTypeName);
-        return new Refraction<T>(t);
+        return new Refraction<T>(_assembly, t);
     }
 
     #region Instance Factories

@@ -5,18 +5,12 @@
 
 using System.Reflection;
 
-namespace Refractions.Attributes;
+namespace Refractions.Extensions;
 
-[AttributeUsage(AttributeTargets.Parameter)]
-public class InferAttribute : Attribute
+internal static class ParameterInfoExtensions
 {
-    public string Infer { get; }
-
-    public Assembly? ResolvingAssembly { get; }
-
-    public InferAttribute(string infer, Type? assembly = null)
+    public static bool HasCustomAttribute<T>(this ParameterInfo element) where T : Attribute
     {
-        Infer = infer;
-        ResolvingAssembly = assembly?.Assembly;
+        return element.GetCustomAttribute<T>() != null;
     }
 }

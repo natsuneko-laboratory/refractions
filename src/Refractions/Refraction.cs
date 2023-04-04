@@ -14,29 +14,42 @@ namespace Refractions;
 
 public class Refraction<TProxy>
 {
+    private readonly Assembly _assembly;
     private readonly Type _t;
 
     public object? InnerInstance { get; }
 
-    internal Refraction(Type t, object? instance = null)
+    internal Refraction(Assembly assembly, Type t, object? instance = null)
     {
+        _assembly = assembly;
         _t = t;
         InnerInstance = instance;
     }
 
-    private static bool IsConstructor(MethodBase mi)
+    private static bool IsConstructor(MemberInfo mi)
     {
         return mi.HasCustomAttribute<ConstructorAttribute>();
     }
 
-    private static bool IsMethod(MethodBase mi)
+    private static bool IsMethod(MemberInfo mi)
     {
         return !IsConstructor(mi);
     }
 
+    private Type GetParameterType(ParameterInfo pi)
+    {
+        if (pi.HasCustomAttribute<InferAttribute>())
+        {
+            var infer = pi.GetCustomAttribute<InferAttribute>();
+            return (infer.ResolvingAssembly ?? _assembly).GetType(infer.Infer);
+        }
+
+        return pi.ParameterType;
+    }
+
     private ConstructorInfo FindConstructor(MethodBase mi)
     {
-        var parameters = mi.GetParameters().Select(w => w.ParameterType).ToArray();
+        var parameters = mi.GetParameters().Select(GetParameterType).ToArray();
         var flags = BindingFlags.Default;
 
         if (mi.HasCustomAttribute<PublicAttribute>())
@@ -54,7 +67,7 @@ public class Refraction<TProxy>
     private MethodInfo FindMethod(MethodBase mi)
     {
         var name = mi.Name;
-        var parameters = mi.GetParameters().Select(w => w.ParameterType).ToArray();
+        var parameters = mi.GetParameters().Select(GetParameterType).ToArray();
         var flags = BindingFlags.Default;
 
         if (mi.HasCustomAttribute<PublicAttribute>())
@@ -96,15 +109,25 @@ public class Refraction<TProxy>
         return (property, true);
     }
 
+    private List<UnaryExpression> BuildArgumentExpressions(MethodCallExpression expr, MethodBase mb, ParameterExpression arguments)
+    {
+        var parameters = mb.GetParameters();
+        return expr.Arguments.Select((w, i) =>
+        {
+            var argument = Expression.ArrayAccess(arguments, Expression.Constant(i));
+            return Expression.Convert(argument, parameters[i].ParameterType != w.Type ? parameters[i].ParameterType : w.Type);
+        }).ToList();
+    }
+
     private TAction BuildProxyLambdaConstructor<TAction>(MethodCallExpression expr) where TAction : Delegate
     {
         if (!IsConstructor(expr.Method))
             throw new InvalidOperationException();
 
-        // ProxyConstruct(i => i.Constructor(msg1, msg2)) --> (args) => new Constructor(args[0], args[1]);
+        // ProxyConstruct(i => i.Constructor(msg1, msg2)) --> (args) => new Constructor((T1) args[0], (T2) args[1]);
         var constructor = FindConstructor(expr.Method);
         var parameters = Expression.Parameter(typeof(object[]), "parameters");
-        var arguments = expr.Arguments.Select((w, i) => Expression.Convert(Expression.ArrayAccess(parameters, Expression.Constant(i)), w.Type));
+        var arguments = BuildArgumentExpressions(expr, constructor, parameters);
         var construct = Expression.New(constructor, arguments);
         var lambda = Expression.Lambda(construct, false, parameters);
 
@@ -116,11 +139,11 @@ public class Refraction<TProxy>
         if (!IsMethod(expr.Method))
             throw new InvalidOperationException();
 
-        // ProxyInvoke(i => i.WriteLine(msg1, msg2)) --> (instance, args) => instance.WriteLine(args[0], args[1]);
+        // ProxyInvoke(i => i.WriteLine(msg1, msg2)) --> (instance, args) => instance.WriteLine((T1) args[0], (T2) args[1]);
         var method = FindMethod(expr.Method);
         var accessor = Expression.Parameter(typeof(object), nameof(InnerInstance));
         var parameters = Expression.Parameter(typeof(object[]), "parameters");
-        var arguments = expr.Arguments.Select((w, i) => Expression.Convert(Expression.ArrayAccess(parameters, Expression.Constant(i)), w.Type));
+        var arguments = BuildArgumentExpressions(expr, method, parameters);
         var body = Expression.Call(IsStaticBinding(expr.Method) ? null : Expression.Convert(accessor, _t), method, arguments);
         var lambda = Expression.Lambda(body, false, accessor, parameters);
 
@@ -159,14 +182,14 @@ public class Refraction<TProxy>
         if (ExpressionActionCaches<Func<object[], object>>.CachedActions.TryGetValue(call.Method, out var c))
         {
             var i = c(GetValueOfArguments(call.Arguments));
-            return new Refraction<TProxy>(_t, i);
+            return new Refraction<TProxy>(_assembly, _t, i);
         }
 
         var func = BuildProxyLambdaConstructor<Func<object[], object>>(call);
         var instance = func(GetValueOfArguments(call.Arguments));
 
         ExpressionActionCaches<Func<object[], object>>.CachedActions.TryAdd(call.Method, func);
-        return new Refraction<TProxy>(_t, instance);
+        return new Refraction<TProxy>(_assembly, _t, instance);
     }
 
     public void ProxyInvoke(Expression<Action<TProxy>> obj)
@@ -205,14 +228,14 @@ public class Refraction<TProxy>
         if (ExpressionActionCaches<Func<object?, object[], object>>.CachedActions.TryGetValue(call.Method, out var c))
         {
             var i = c(InnerInstance, GetValueOfArguments(call.Arguments));
-            return new Refraction<TProxy>(_t, i);
+            return new Refraction<TProxy>(_assembly, _t, i);
         }
 
         var func = BuildProxyLambdaMethod<Func<object?, object[], object>>(call);
         var instance = func(InnerInstance, GetValueOfArguments(call.Arguments));
 
         ExpressionActionCaches<Func<object?, object[], object>>.CachedActions.TryAdd(call.Method, func);
-        return new Refraction<TProxy>(_t, instance);
+        return new Refraction<TProxy>(_assembly, _t, instance);
     }
 
     public void ProxySet<TValue>(Expression<Func<TProxy, TValue>> obj, TValue value)
@@ -258,7 +281,7 @@ public class Refraction<TProxy>
 
     public Refraction<TProxy> Instance(object? instance)
     {
-        return new Refraction<TProxy>(_t, instance);
+        return new Refraction<TProxy>(_assembly, _t, instance);
     }
 
     private static class ExpressionActionCaches<TValue>
