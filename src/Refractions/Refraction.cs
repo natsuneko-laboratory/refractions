@@ -182,14 +182,14 @@ public class Refraction<TProxy>
         if (ExpressionActionCaches<Func<object[], object>>.CachedActions.TryGetValue(call.Method, out var c))
         {
             var i = c(GetValueOfArguments(call.Arguments));
-            return new Refraction<TProxy>(_assembly, _t, i);
+            return Instance(i);
         }
 
         var func = BuildProxyLambdaConstructor<Func<object[], object>>(call);
         var instance = func(GetValueOfArguments(call.Arguments));
 
         ExpressionActionCaches<Func<object[], object>>.CachedActions.TryAdd(call.Method, func);
-        return new Refraction<TProxy>(_assembly, _t, instance);
+        return Instance(instance);
     }
 
     public void ProxyInvoke(Expression<Action<TProxy>> obj)
@@ -228,14 +228,14 @@ public class Refraction<TProxy>
         if (ExpressionActionCaches<Func<object?, object[], object>>.CachedActions.TryGetValue(call.Method, out var c))
         {
             var i = c(InnerInstance, GetValueOfArguments(call.Arguments));
-            return new Refraction<TProxy>(_assembly, _t, i);
+            return Instance(i);
         }
 
         var func = BuildProxyLambdaMethod<Func<object?, object[], object>>(call);
         var instance = func(InnerInstance, GetValueOfArguments(call.Arguments));
 
         ExpressionActionCaches<Func<object?, object[], object>>.CachedActions.TryAdd(call.Method, func);
-        return new Refraction<TProxy>(_assembly, _t, instance);
+        return Instance(instance);
     }
 
     public void ProxySet<TValue>(Expression<Func<TProxy, TValue>> obj, TValue value)
@@ -277,6 +277,28 @@ public class Refraction<TProxy>
 
         ExpressionActionCaches<Func<object?, TReturn>>.CachedActions.TryAdd(call.Member, func);
         return func(InnerInstance);
+    }
+
+    public Refraction<TProxy> ProxyGet(Expression<Func<TProxy, TProxy>> obj)
+    {
+        var call = (MemberExpression)obj.Body;
+
+        if (ExpressionActionCaches<Func<object?, object>>.CachedActions.TryGetValue(call.Member, out var c))
+        {
+            var i = c(InnerInstance);
+            return Instance(i);
+        }
+
+        var member = FindMember(call.Member);
+        var parameter = Expression.Parameter(typeof(object), "_instance");
+        var accessor = IsStaticBinding(call.Member) ? null : Expression.Convert(parameter, _t);
+        var body = member.IsProperty ? Expression.Property(accessor, (PropertyInfo)member.Metadata) : Expression.Field(accessor, (FieldInfo)member.Metadata);
+        var lambda = Expression.Lambda(body, parameter);
+        var func = (Func<object?, object>)lambda.Compile();
+
+        ExpressionActionCaches<Func<object?, object>>.CachedActions.TryAdd(call.Member, func);
+        var instance = func(InnerInstance);
+        return Instance(instance);
     }
 
     public Refraction<TProxy> Instance(object? instance)
